@@ -20,6 +20,7 @@ from agent_product.services.conversation import (
     load_history,
     load_or_create_conversation,
 )
+from agent_product.services.workspace import WorkspaceNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,14 @@ router = APIRouter(
     tags=["agent"],
     dependencies=[Depends(require_api_key)],
 )
+
+
+def _get_workspace(request: Request, tenant_id: str):
+    workspace_id = request.headers.get("X-Workspace-ID")
+    try:
+        return request.app.state.workspace_registry.get(workspace_id, tenant_id)
+    except WorkspaceNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.post("/chat/stream", response_class=Response)
@@ -95,6 +104,7 @@ async def chat_stream(
         deps=AgentDependencies(
             tenant_id=tenant_id,
             request_id=request.state.request_id,
+            workspace=_get_workspace(request, tenant_id),
         ),
         on_complete=persist_completed_run,
     )
@@ -126,7 +136,11 @@ async def chat(
             prompt=body.message,
             history=load_history(conversation),
             conversation_id=conversation.id,
-            dependencies=AgentDependencies(tenant_id=tenant_id, request_id=request_id),
+            dependencies=AgentDependencies(
+                tenant_id=tenant_id,
+                request_id=request_id,
+                workspace=_get_workspace(request, tenant_id),
+            ),
         )
         version = await repository.save_history(
             conversation_id=conversation.id,

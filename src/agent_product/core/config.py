@@ -34,7 +34,10 @@ class Settings(BaseSettings):
     sql_echo: bool = False
 
     service_api_key: str | None = None
-    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    cors_origins: str = (
+        "http://localhost:3000,http://127.0.0.1:3000,"
+        "http://tauri.localhost,https://tauri.localhost,tauri://localhost"
+    )
 
     @property
     def cors_origin_list(self) -> list[str]:

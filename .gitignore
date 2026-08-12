@@ -9,6 +9,9 @@ htmlcov/
 *.egg-info/
 build/
 dist/
+.cargo-home/
+.pnpm-store/
+web/src-tauri/target/
+web/src-tauri/gen/
 data/*.db
 data/*.db-*
-

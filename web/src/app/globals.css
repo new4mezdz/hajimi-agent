@@ -212,6 +212,71 @@ button {
   padding: 0 10px;
 }
 
+.workspace-section {
+  margin-top: 18px;
+}
+
+.workspace-card {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  padding: 10px;
+  gap: 9px;
+  border: 1px solid rgba(201, 244, 93, 0.14);
+  border-radius: 10px;
+  color: #dfe7e3;
+  background: rgba(201, 244, 93, 0.055);
+  text-align: left;
+}
+
+.workspace-card:hover {
+  border-color: rgba(201, 244, 93, 0.3);
+  background: rgba(201, 244, 93, 0.09);
+}
+
+.workspace-card-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--accent);
+  background: rgba(201, 244, 93, 0.08);
+}
+
+.workspace-card-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.workspace-card-copy strong,
+.workspace-card-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-card-copy strong {
+  font-size: 10px;
+}
+
+.workspace-card-copy small {
+  color: #77847e;
+  font-size: 8px;
+}
+
+.workspace-error {
+  margin: 7px 3px 0;
+  color: #e69a91;
+  font-size: 8px;
+  line-height: 1.4;
+}
+
 .section-label {
   display: flex;
   align-items: center;
@@ -389,6 +454,40 @@ button {
   display: flex;
   align-items: center;
   gap: 14px;
+}
+
+.workspace-button {
+  display: flex;
+  max-width: 180px;
+  height: 34px;
+  align-items: center;
+  padding: 0 11px;
+  gap: 7px;
+  overflow: hidden;
+  border: 1px solid #dce1de;
+  border-radius: 9px;
+  color: #56615c;
+  background: #fff;
+  font-size: 9px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-button:hover {
+  border-color: #c8d0cc;
+  background: #f8faf8;
+}
+
+.workspace-button.workspace-selected {
+  border-color: rgba(124, 173, 49, 0.32);
+  color: #587d20;
+  background: rgba(201, 244, 93, 0.11);
+}
+
+.workspace-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .connection-status {
@@ -993,6 +1092,10 @@ button {
 
   .workspace-header {
     padding-inline: 17px;
+  }
+
+  .workspace-button {
+    max-width: 112px;
   }
 
   .connection-status {

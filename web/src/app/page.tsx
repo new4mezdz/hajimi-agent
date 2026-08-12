@@ -8,6 +8,8 @@ import {
   Check,
   Clock3,
   Command,
+  FolderCode,
+  FolderOpen,
   FileText,
   History,
   Menu,
@@ -29,10 +31,16 @@ const TENANT_ID = "local";
 const CONVERSATION_STORAGE_KEY = "agent-product-conversation-id";
 
 const suggestions = [
-  { icon: Search, label: "帮我分析一个行业趋势" },
-  { icon: FileText, label: "整理一份项目计划" },
-  { icon: WandSparkles, label: "设计一个产品功能" },
+  { icon: Search, label: "概览这个代码仓库的结构" },
+  { icon: FileText, label: "找出项目的启动入口" },
+  { icon: WandSparkles, label: "分析当前架构并给出改进建议" },
 ];
+
+type WorkspaceInfo = {
+  id: string;
+  name: string;
+  path: string;
+};
 
 function newConversationId() {
   return crypto.randomUUID();
@@ -44,6 +52,9 @@ export default function Home() {
     return window.localStorage.getItem(CONVERSATION_STORAGE_KEY) ?? newConversationId();
   });
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
 
   useEffect(() => {
     window.localStorage.setItem(CONVERSATION_STORAGE_KEY, conversationId);
@@ -53,6 +64,44 @@ export default function Home() {
     const id = newConversationId();
     window.localStorage.setItem(CONVERSATION_STORAGE_KEY, id);
     setConversationId(id);
+  }
+
+  async function selectWorkspace() {
+    setWorkspaceError(null);
+    let selectedPath: string | null = null;
+    try {
+      if ("__TAURI_INTERNALS__" in window) {
+        const { open } = await import("@tauri-apps/plugin-dialog");
+        const selected = await open({
+          directory: true,
+          multiple: false,
+          title: "选择代码仓库",
+        });
+        selectedPath = typeof selected === "string" ? selected : null;
+      } else {
+        selectedPath = window.prompt("开发模式：请输入代码仓库的绝对路径");
+      }
+      if (!selectedPath) return;
+
+      setWorkspaceLoading(true);
+      const response = await fetch(`${API_BASE}/v1/workspaces`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": TENANT_ID,
+        },
+        body: JSON.stringify({ path: selectedPath }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+        throw new Error(payload?.detail ?? "工作区连接失败");
+      }
+      setWorkspace((await response.json()) as WorkspaceInfo);
+    } catch (error) {
+      setWorkspaceError(error instanceof Error ? error.message : "工作区连接失败");
+    } finally {
+      setWorkspaceLoading(false);
+    }
   }
 
   return (
@@ -81,6 +130,23 @@ export default function Home() {
           <span>新建对话</span>
           <kbd>⌘ K</kbd>
         </button>
+
+        <div className="sidebar-section workspace-section">
+          <div className="section-label">
+            <FolderCode size={13} />
+            <span>代码仓库</span>
+          </div>
+          <button className="workspace-card" type="button" onClick={() => void selectWorkspace()}>
+            <span className="workspace-card-icon">
+              <FolderOpen size={16} />
+            </span>
+            <span className="workspace-card-copy">
+              <strong>{workspace?.name ?? "打开本地仓库"}</strong>
+              <small>{workspace?.path ?? "只读模式"}</small>
+            </span>
+          </button>
+          {workspaceError ? <p className="workspace-error">{workspaceError}</p> : null}
+        </div>
 
         <div className="sidebar-section">
           <div className="section-label">
@@ -123,6 +189,9 @@ export default function Home() {
           key={conversationId}
           conversationId={conversationId}
           onNewConversation={startNewConversation}
+          workspace={workspace}
+          workspaceLoading={workspaceLoading}
+          onSelectWorkspace={selectWorkspace}
         />
       </section>
     </main>
@@ -132,9 +201,15 @@ export default function Home() {
 function ChatWorkspace({
   conversationId,
   onNewConversation,
+  workspace,
+  workspaceLoading,
+  onSelectWorkspace,
 }: {
   conversationId: string;
   onNewConversation: () => void;
+  workspace: WorkspaceInfo | null;
+  workspaceLoading: boolean;
+  onSelectWorkspace: () => Promise<void>;
 }) {
   const [input, setInput] = useState("");
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
@@ -145,7 +220,10 @@ function ChatWorkspace({
     () =>
       new DefaultChatTransport({
         api: `${API_BASE}/v1/chat/stream`,
-        headers: { "X-Tenant-ID": TENANT_ID },
+        headers: {
+          "X-Tenant-ID": TENANT_ID,
+          ...(workspace ? { "X-Workspace-ID": workspace.id } : {}),
+        },
         prepareSendMessagesRequest: ({ id, messages, trigger, messageId }) => ({
           body: {
             trigger,
@@ -155,7 +233,7 @@ function ChatWorkspace({
           },
         }),
       }),
-    [],
+    [workspace],
   );
 
   const { messages, sendMessage, status, error, setMessages, stop } = useChat({
@@ -170,8 +248,22 @@ function ChatWorkspace({
 
     async function initialize() {
       try {
-        const health = await fetch(`${API_BASE}/health/ready`, { signal: controller.signal });
-        setApiOnline(health.ok);
+        let online = false;
+        for (let attempt = 0; attempt < 12 && !controller.signal.aborted; attempt += 1) {
+          try {
+            const health = await fetch(`${API_BASE}/health/ready`, {
+              signal: controller.signal,
+            });
+            online = health.ok;
+          } catch (healthError) {
+            if (healthError instanceof DOMException && healthError.name === "AbortError") throw healthError;
+          }
+          if (online) break;
+          await new Promise((resolve) => window.setTimeout(resolve, 350));
+        }
+        setApiOnline(online);
+
+        if (!online) return;
 
         const history = await fetch(
           `${API_BASE}/v1/conversations/${conversationId}/messages`,
@@ -226,6 +318,16 @@ function ChatWorkspace({
           </div>
         </div>
         <div className="header-actions">
+          <button
+            className={`workspace-button ${workspace ? "workspace-selected" : ""}`}
+            type="button"
+            onClick={() => void onSelectWorkspace()}
+            disabled={workspaceLoading}
+            title={workspace?.path}
+          >
+            <FolderOpen size={14} />
+            {workspaceLoading ? "连接中" : workspace?.name ?? "打开仓库"}
+          </button>
           <div className={`connection-status ${apiOnline ? "is-online" : "is-offline"}`}>
             <span />
             {apiOnline === null ? "检测中" : apiOnline ? "服务已连接" : "服务未连接"}
@@ -287,7 +389,7 @@ function ChatWorkspace({
             <div className="composer-footer">
               <div className="composer-hint">
                 <Sparkles size={13} />
-                支持工具调用与多轮上下文
+                {workspace ? `只读分析：${workspace.name}` : "打开代码仓库后可读取与搜索源码"}
               </div>
               {isWorking ? (
                 <button className="send-button stop-button" type="button" onClick={() => stop()}>
@@ -317,9 +419,9 @@ function WelcomeState({ onSuggestion }: { onSuggestion: (message: string) => Pro
         <span className="orbit-dot orbit-dot-one" />
         <span className="orbit-dot orbit-dot-two" />
       </div>
-      <span className="welcome-kicker">YOUR AI WORKSPACE</span>
-      <h2>今天想一起完成什么？</h2>
-      <p>我可以分析信息、制定计划，也可以调用工具执行具体任务。</p>
+      <span className="welcome-kicker">YOUR LOCAL CODE AGENT</span>
+      <h2>从一个代码仓库开始</h2>
+      <p>选择本地项目后，我可以安全地浏览文件、搜索源码并分析架构。</p>
       <div className="suggestion-grid">
         {suggestions.map(({ icon: Icon, label }) => (
           <button key={label} type="button" onClick={() => void onSuggestion(label)}>
@@ -414,5 +516,8 @@ function MessagePartView({ part }: { part: UIMessage["parts"][number] }) {
 function formatToolName(name: string) {
   if (name === "current_time") return "查询当前时间";
   if (name === "web_search") return "联网搜索";
+  if (name === "list_files") return "浏览代码文件";
+  if (name === "read_file") return "读取源文件";
+  if (name === "search_text") return "搜索代码";
   return name.replaceAll("_", " ");
 }
