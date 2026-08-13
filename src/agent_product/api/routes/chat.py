@@ -1,10 +1,12 @@
 import logging
+from collections.abc import Sequence
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, Response
-from pydantic_ai import Agent
+from pydantic_ai import Agent, ModelMessage
+from pydantic_ai.messages import ModelResponse, RetryPromptPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_core import to_jsonable_python
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +41,25 @@ def _get_workspace(request: Request, tenant_id: str):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
+def _pending_tool_calls(history: Sequence[ModelMessage]) -> dict[str, str]:
+    calls: dict[str, str] = {}
+    resolved: set[str] = set()
+    for message in history:
+        if isinstance(message, ModelResponse):
+            for part in message.parts:
+                if isinstance(part, ToolCallPart):
+                    calls[part.tool_call_id] = part.tool_name
+        else:
+            for part in message.parts:
+                if isinstance(part, (ToolReturnPart, RetryPromptPart)) and part.tool_call_id:
+                    resolved.add(part.tool_call_id)
+    return {
+        tool_call_id: tool_name
+        for tool_call_id, tool_name in calls.items()
+        if tool_call_id not in resolved
+    }
+
+
 @router.post("/chat/stream", response_class=Response)
 async def chat_stream(
     request: Request,
@@ -59,12 +80,13 @@ async def chat_stream(
     if run_input.trigger != "submit-message" or len(run_input.messages) != 1:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Send exactly one new user message per request",
+            detail="Send exactly one new message per request",
         )
-    if run_input.messages[0].role != "user":
+    submitted_role = run_input.messages[0].role
+    if submitted_role not in {"user", "assistant"}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The submitted message must have the user role",
+            detail="The submitted message must be a user message or an approval response",
         )
 
     repository = ConversationRepository(session)
@@ -76,9 +98,15 @@ async def chat_stream(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Conversation not found",
             )
+        if submitted_role == "assistant":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="There is no pending tool call to approve",
+            )
         conversation = await repository.create(str(conversation_id), tenant_id)
 
     expected_version = conversation.version
+    history = load_history(conversation)
 
     async def persist_completed_run(result) -> None:
         try:
@@ -95,18 +123,62 @@ async def chat_stream(
             )
             raise
 
-    return await VercelAIAdapter.dispatch_request(
-        request,
+    dependencies = AgentDependencies(
+        tenant_id=tenant_id,
+        request_id=request.state.request_id,
+        workspace=_get_workspace(request, tenant_id),
+        knowledge_base=request.app.state.knowledge_base,
+    )
+    if submitted_role == "user":
+        return await VercelAIAdapter.dispatch_request(
+            request,
+            agent=agent,
+            sdk_version=7,
+            message_history=history,
+            conversation_id=conversation.id,
+            deps=dependencies,
+            on_complete=persist_completed_run,
+        )
+
+    client_adapter = VercelAIAdapter(
         agent=agent,
+        run_input=run_input,
+        accept=request.headers.get("accept"),
         sdk_version=7,
-        message_history=load_history(conversation),
-        conversation_id=conversation.id,
-        deps=AgentDependencies(
-            tenant_id=tenant_id,
-            request_id=request.state.request_id,
-            workspace=_get_workspace(request, tenant_id),
-        ),
-        on_complete=persist_completed_run,
+    )
+    deferred_results = client_adapter.deferred_tool_results
+    pending_calls = _pending_tool_calls(history)
+    approval_ids = set(deferred_results.approvals) if deferred_results is not None else set()
+    if (
+        deferred_results is None
+        or deferred_results.calls
+        or not approval_ids
+        or approval_ids != set(pending_calls)
+        or any(pending_calls[tool_call_id] != "write_file" for tool_call_id in approval_ids)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The approval response does not match the pending file write",
+        )
+
+    # Approval booleans come from the client, but the tool name and arguments must come only
+    # from trusted server-side history. Dropping the submitted assistant message prevents a
+    # browser from changing the path or content while approving a real tool-call ID.
+    safe_run_input = run_input.model_copy(update={"messages": []})
+    safe_adapter = VercelAIAdapter(
+        agent=agent,
+        run_input=safe_run_input,
+        accept=request.headers.get("accept"),
+        sdk_version=7,
+    )
+    return safe_adapter.streaming_response(
+        safe_adapter.run_stream(
+            message_history=history,
+            deferred_tool_results=deferred_results,
+            conversation_id=conversation.id,
+            deps=dependencies,
+            on_complete=persist_completed_run,
+        )
     )
 
 
@@ -140,6 +212,7 @@ async def chat(
                 tenant_id=tenant_id,
                 request_id=request_id,
                 workspace=_get_workspace(request, tenant_id),
+                knowledge_base=request.app.state.knowledge_base,
             ),
         )
         version = await repository.save_history(

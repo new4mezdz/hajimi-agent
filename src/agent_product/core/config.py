@@ -28,10 +28,15 @@ class Settings(BaseSettings):
     web_search_enabled: bool = True
     web_search_max_uses: int = 3
     deepseek_anthropic_base_url: str = "https://api.deepseek.com/anthropic"
+    workspace_write_enabled: bool = True
 
     database_url: str = "sqlite+aiosqlite:///./data/agent.db"
     auto_create_tables: bool = True
     sql_echo: bool = False
+
+    knowledge_enabled: bool = True
+    knowledge_dir: str = "knowledge"
+    knowledge_max_results: int = 8
 
     service_api_key: str | None = None
     cors_origins: str = (
@@ -46,6 +51,8 @@ class Settings(BaseSettings):
     def prepare_local_directories(self) -> None:
         if self.database_url.startswith("sqlite"):
             Path("data").mkdir(parents=True, exist_ok=True)
+        if self.knowledge_enabled:
+            Path(self.knowledge_dir).mkdir(parents=True, exist_ok=True)
 
 
 @lru_cache

@@ -18,7 +18,10 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
         database_url=f"sqlite+aiosqlite:///{database_path.as_posix()}",
         service_api_key=None,
     )
-    app = create_app(settings=settings, model=TestModel(custom_output_text="Test response"))
+    app = create_app(
+        settings=settings,
+        model=TestModel(call_tools=[], custom_output_text="Test response"),
+    )
     with TestClient(app) as test_client:
         yield test_client
 
@@ -32,7 +35,9 @@ def secured_client(tmp_path: Path) -> Iterator[TestClient]:
         database_url=f"sqlite+aiosqlite:///{database_path.as_posix()}",
         service_api_key="secret",
     )
-    app = create_app(settings=settings, model=TestModel(custom_output_text="Test response"))
+    app = create_app(
+        settings=settings,
+        model=TestModel(call_tools=[], custom_output_text="Test response"),
+    )
     with TestClient(app) as test_client:
         yield test_client
-
