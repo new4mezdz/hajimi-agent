@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import Header, HTTPException, Request, status
 
 TENANT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
+CUSTOMER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
 
 
 async def require_api_key(
@@ -28,3 +29,13 @@ async def require_tenant_id(
         )
     return tenant_id
 
+
+async def require_customer_id(
+    customer_id: Annotated[str, Header(alias="X-Customer-ID")] = "customer-demo-a",
+) -> str:
+    if not CUSTOMER_PATTERN.fullmatch(customer_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Customer-ID has an invalid format",
+        )
+    return customer_id

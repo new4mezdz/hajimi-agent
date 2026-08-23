@@ -1,0 +1,80 @@
+{
+  "description": "Human-readable manifest of the relational rows inserted by seed_support_demo_data",
+  "tenant_id": "local",
+  "authenticated_customer": {
+    "id": "customer-demo-a",
+    "customer_number": "CUST-00010001",
+    "display_name": "李晓晴（演示）",
+    "email_masked": "l***@example.com",
+    "phone_masked": "138****5678"
+  },
+  "isolation_customer": {
+    "id": "customer-demo-b",
+    "customer_number": "CUST-00010002",
+    "display_name": "王诚（演示）",
+    "email_masked": "w***@example.com",
+    "phone_masked": "139****2468"
+  },
+  "products": [
+    {"id": "product-demo-keyboard", "sku": "KEYBOARD-01", "name": "无线键盘"},
+    {"id": "product-demo-accessory", "sku": "ACCESSORY-02", "name": "限时促销配件"},
+    {"id": "product-demo-headphones", "sku": "HEADPHONES-03", "name": "降噪耳机"}
+  ],
+  "inventory": [
+    {"product_id": "product-demo-keyboard", "warehouse_id": "tokyo-01", "on_hand": 9, "reserved": 2, "available": 7},
+    {"product_id": "product-demo-accessory", "warehouse_id": "tokyo-01", "on_hand": 0, "reserved": 0, "available": 0},
+    {"product_id": "product-demo-headphones", "warehouse_id": "osaka-01", "on_hand": 12, "reserved": 3, "available": 9}
+  ],
+  "orders": [
+    {
+      "id": "order-demo-1001",
+      "order_number_pattern": "EC<seed-date-minus-12-days>0001",
+      "customer_id": "customer-demo-a",
+      "status": "delivered",
+      "item_id": "item-demo-1001",
+      "line_number": 1,
+      "product_id": "product-demo-keyboard",
+      "refund_window_days": 30,
+      "delivered_days_ago_at_seed": 8,
+      "expected_options": ["refund", "replacement"]
+    },
+    {
+      "id": "order-demo-1002",
+      "order_number_pattern": "EC<seed-date-minus-20-days>0002",
+      "customer_id": "customer-demo-a",
+      "status": "delivered",
+      "item_id": "item-demo-1002",
+      "line_number": 1,
+      "product_id": "product-demo-accessory",
+      "refund_window_days": 7,
+      "delivered_days_ago_at_seed": 15,
+      "expected_options": ["manual_review"]
+    },
+    {
+      "id": "order-demo-1003",
+      "order_number_pattern": "EC<seed-date-minus-1-day>0003",
+      "customer_id": "customer-demo-a",
+      "status": "in_transit",
+      "item_id": "item-demo-1003",
+      "line_number": 1,
+      "product_id": "product-demo-headphones",
+      "estimated_delivery_days_at_seed": 1,
+      "expected_options": ["manual_review"]
+    },
+    {
+      "id": "order-demo-2001",
+      "order_number_pattern": "EC<seed-date-minus-5-days>0004",
+      "customer_id": "customer-demo-b",
+      "status": "delivered",
+      "item_id": "item-demo-2001",
+      "line_number": 1,
+      "product_id": "product-demo-keyboard",
+      "purpose": "tenant-and-customer isolation check"
+    }
+  ],
+  "payments": {
+    "provider": "demo-pay",
+    "status": "captured",
+    "method_masked": "Visa •••• 4242"
+  }
+}

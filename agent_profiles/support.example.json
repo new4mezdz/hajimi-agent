@@ -1,0 +1,14 @@
+{
+  "id": "support-knowledge",
+  "version": "1",
+  "display_name": "客服知识助手",
+  "description": "只检索带 support 标签的已发布知识，不访问代码工作区。",
+  "capability_packs": ["common", "knowledge"],
+  "permission_policy": "knowledge-read-only",
+  "ui_features": ["chat", "knowledge"],
+  "knowledge_scope": {
+    "scope_id": "support-published",
+    "required_tags": ["support"],
+    "library_ids": ["default"]
+  }
+}

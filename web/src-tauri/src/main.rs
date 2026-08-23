@@ -1,17 +1,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod agent_ipc;
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
 
+use agent_ipc::{AgentIpc, AgentRequest};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, RunEvent, State};
 
 const SETTINGS_FILE: &str = "agent-settings.json";
-
-struct BackendProcess(Mutex<Option<Child>>);
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -19,6 +20,7 @@ struct StoredAgentSettings {
     version: u8,
     provider: String,
     model: String,
+    models: BTreeMap<String, String>,
     web_search_enabled: bool,
     workspace_write_enabled: bool,
     agent_instructions: String,
@@ -28,9 +30,10 @@ struct StoredAgentSettings {
 impl Default for StoredAgentSettings {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: 2,
             provider: "openai".into(),
             model: "openai:gpt-4.1-mini".into(),
+            models: BTreeMap::new(),
             web_search_enabled: true,
             workspace_write_enabled: true,
             agent_instructions:
@@ -47,10 +50,12 @@ impl Default for StoredAgentSettings {
 struct PublicAgentSettings {
     provider: String,
     model: String,
+    configured_models: BTreeMap<String, String>,
     web_search_enabled: bool,
     workspace_write_enabled: bool,
     agent_instructions: String,
     api_key_configured: bool,
+    api_key_previews: BTreeMap<String, String>,
     configured_providers: Vec<String>,
     secure_storage: bool,
 }
@@ -74,14 +79,45 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| format!("Could not resolve the app config directory: {error}"))
 }
 
+fn default_model(provider: &str) -> Option<&'static str> {
+    match provider {
+        "openai" => Some("openai:gpt-4.1-mini"),
+        "deepseek" => Some("deepseek:deepseek-v4-flash"),
+        "anthropic" => Some("anthropic:claude-sonnet-4-5"),
+        _ => None,
+    }
+}
+
+fn normalize_settings(mut settings: StoredAgentSettings) -> StoredAgentSettings {
+    settings.version = 2;
+    let expected_prefix = format!("{}:", settings.provider);
+    if settings.model.starts_with(&expected_prefix) {
+        settings
+            .models
+            .insert(settings.provider.clone(), settings.model.clone());
+    }
+
+    let configured_providers: Vec<String> = settings.encrypted_api_keys.keys().cloned().collect();
+    for provider in configured_providers {
+        if let Some(model) = default_model(&provider) {
+            settings
+                .models
+                .entry(provider)
+                .or_insert_with(|| model.into());
+        }
+    }
+    settings
+}
+
 fn load_settings(app: &AppHandle) -> Result<StoredAgentSettings, String> {
     let path = settings_path(app)?;
     if !path.exists() {
-        return Ok(StoredAgentSettings::default());
+        return Ok(normalize_settings(StoredAgentSettings::default()));
     }
     let content = fs::read_to_string(&path)
         .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
     serde_json::from_str(&content)
+        .map(normalize_settings)
         .map_err(|error| format!("Could not parse {}: {error}", path.display()))
 }
 
@@ -229,14 +265,44 @@ fn unprotect_secret(_encrypted: &str) -> Result<String, String> {
     Err("Secure API-key storage is currently implemented for Windows only".into())
 }
 
+fn masked_secret(secret: &str) -> String {
+    let secret = secret.trim();
+    let character_count = secret.chars().count();
+    let requested_visible = if secret.starts_with("sk-") { 7 } else { 4 };
+    let visible = if character_count <= requested_visible {
+        (character_count / 2).max(1)
+    } else {
+        requested_visible
+    };
+    let prefix: String = secret.chars().take(visible).collect();
+    format!("{prefix}••••••••")
+}
+
 fn public_settings(settings: &StoredAgentSettings) -> PublicAgentSettings {
+    let api_key_previews = settings
+        .encrypted_api_keys
+        .iter()
+        .filter_map(|(provider, encrypted)| {
+            unprotect_secret(encrypted)
+                .ok()
+                .map(|secret| (provider.clone(), masked_secret(&secret)))
+        })
+        .collect();
+    let configured_models = settings
+        .models
+        .iter()
+        .filter(|(provider, _)| settings.encrypted_api_keys.contains_key(*provider))
+        .map(|(provider, model)| (provider.clone(), model.clone()))
+        .collect();
     PublicAgentSettings {
         provider: settings.provider.clone(),
         model: settings.model.clone(),
+        configured_models,
         web_search_enabled: settings.web_search_enabled,
         workspace_write_enabled: settings.workspace_write_enabled,
         agent_instructions: settings.agent_instructions.clone(),
         api_key_configured: settings.encrypted_api_keys.contains_key(&settings.provider),
+        api_key_previews,
         configured_providers: settings.encrypted_api_keys.keys().cloned().collect(),
         secure_storage: cfg!(windows),
     }
@@ -270,29 +336,22 @@ fn selected_api_key(settings: &StoredAgentSettings) -> Result<Option<String>, St
         .transpose()
 }
 
-#[cfg(debug_assertions)]
-fn local_backend_command() -> Option<(PathBuf, PathBuf)> {
-    let tauri_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let repository_root = tauri_dir.parent()?.parent()?.to_path_buf();
-    let python = repository_root
-        .join(".venv")
-        .join("Scripts")
-        .join("python.exe");
-    python.exists().then_some((python, repository_root))
-}
-
-fn configure_backend_environment(command: &mut Command, settings: &StoredAgentSettings) {
-    command
-        .env("AI_MODEL", &settings.model)
-        .env("AGENT_INSTRUCTIONS", &settings.agent_instructions)
-        .env(
-            "WEB_SEARCH_ENABLED",
+fn backend_environment(settings: &StoredAgentSettings) -> BTreeMap<String, String> {
+    let mut environment = BTreeMap::from([
+        ("AI_MODEL".into(), settings.model.clone()),
+        (
+            "AGENT_INSTRUCTIONS".into(),
+            settings.agent_instructions.clone(),
+        ),
+        (
+            "WEB_SEARCH_ENABLED".into(),
             settings.web_search_enabled.to_string(),
-        )
-        .env(
-            "WORKSPACE_WRITE_ENABLED",
+        ),
+        (
+            "WORKSPACE_WRITE_ENABLED".into(),
             settings.workspace_write_enabled.to_string(),
-        );
+        ),
+    ]);
 
     let variable = match settings.provider.as_str() {
         "deepseek" => "DEEPSEEK_API_KEY",
@@ -300,55 +359,17 @@ fn configure_backend_environment(command: &mut Command, settings: &StoredAgentSe
         _ => "OPENAI_API_KEY",
     };
     if let Ok(Some(key)) = selected_api_key(settings) {
-        command.env(variable, key);
+        environment.insert(variable.into(), key);
     }
+    environment
 }
 
-#[cfg(debug_assertions)]
-fn spawn_local_backend(settings: &StoredAgentSettings) -> Option<Child> {
-    let (python, repository_root) = local_backend_command()?;
-    let mut command = Command::new(python);
-    command
-        .args(["-m", "agent_product"])
-        .current_dir(repository_root)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    configure_backend_environment(&mut command, settings);
-
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
-    }
-
-    command.spawn().ok()
-}
-
-#[cfg(not(debug_assertions))]
-fn spawn_local_backend(_settings: &StoredAgentSettings) -> Option<Child> {
-    None
-}
-
-fn stop_backend(backend: &BackendProcess) {
-    if let Ok(mut child) = backend.0.lock() {
-        if let Some(mut process) = child.take() {
-            let _ = process.kill();
-            let _ = process.wait();
-        }
-    }
-}
-
-fn restart_backend(backend: &BackendProcess, settings: &StoredAgentSettings) -> Result<(), String> {
-    stop_backend(backend);
-    let process = spawn_local_backend(settings)
-        .ok_or_else(|| "Could not restart the local Agent service".to_owned())?;
-    let mut child = backend
-        .0
-        .lock()
-        .map_err(|_| "Could not lock the Agent service process".to_owned())?;
-    *child = Some(process);
-    Ok(())
+fn restart_backend(
+    app: &AppHandle,
+    backend: &AgentIpc,
+    settings: &StoredAgentSettings,
+) -> Result<(), String> {
+    backend.restart(app, &backend_environment(settings))
 }
 
 #[tauri::command]
@@ -359,13 +380,17 @@ fn get_agent_settings(app: AppHandle) -> Result<PublicAgentSettings, String> {
 #[tauri::command]
 fn save_agent_settings(
     app: AppHandle,
-    backend: State<'_, BackendProcess>,
+    backend: State<'_, AgentIpc>,
     input: AgentSettingsInput,
 ) -> Result<PublicAgentSettings, String> {
     validate_settings(&input)?;
     let mut settings = load_settings(&app)?;
+    settings.version = 2;
     settings.provider = input.provider;
     settings.model = input.model;
+    settings
+        .models
+        .insert(settings.provider.clone(), settings.model.clone());
     settings.web_search_enabled = input.web_search_enabled;
     settings.workspace_write_enabled = input.workspace_write_enabled;
     settings.agent_instructions = input.agent_instructions.trim().to_owned();
@@ -379,8 +404,22 @@ fn save_agent_settings(
     }
 
     save_settings_file(&app, &settings)?;
-    restart_backend(&backend, &settings)?;
+    restart_backend(&app, &backend, &settings)?;
     Ok(public_settings(&settings))
+}
+
+#[tauri::command]
+fn agent_request(
+    backend: State<'_, AgentIpc>,
+    request: AgentRequest,
+    on_event: Channel<Value>,
+) -> Result<String, String> {
+    backend.request(request, on_event)
+}
+
+#[tauri::command]
+fn agent_cancel(backend: State<'_, AgentIpc>, request_id: String) -> Result<(), String> {
+    backend.cancel(&request_id)
 }
 
 fn remove_stale_temporary_settings(path: &Path) {
@@ -393,14 +432,20 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_agent_settings,
-            save_agent_settings
+            save_agent_settings,
+            agent_request,
+            agent_cancel
         ])
         .setup(|app| {
             let handle = app.handle().clone();
             let path = settings_path(&handle).map_err(std::io::Error::other)?;
             remove_stale_temporary_settings(&path);
             let settings = load_settings(&handle).map_err(std::io::Error::other)?;
-            app.manage(BackendProcess(Mutex::new(spawn_local_backend(&settings))));
+            let backend = AgentIpc::new();
+            backend
+                .start(&handle, &backend_environment(&settings))
+                .map_err(std::io::Error::other)?;
+            app.manage(backend);
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -408,7 +453,7 @@ fn main() {
 
     application.run(|app, event| {
         if matches!(event, RunEvent::Exit { .. }) {
-            stop_backend(&app.state::<BackendProcess>());
+            app.state::<AgentIpc>().stop();
         }
     });
 }
@@ -430,6 +475,36 @@ mod tests {
         };
 
         assert!(validate_settings(&input).is_err());
+    }
+
+    #[test]
+    fn masks_api_keys_without_exposing_length_or_suffix() {
+        assert_eq!(masked_secret("sk-123456789"), "sk-1234••••••••");
+        assert_eq!(masked_secret("abcdefghi"), "abcd••••••••");
+        assert_eq!(masked_secret("abc"), "a••••••••");
+    }
+
+    #[test]
+    fn migrates_provider_models_without_exposing_unconfigured_defaults() {
+        let mut settings = StoredAgentSettings {
+            version: 1,
+            provider: "deepseek".into(),
+            model: "deepseek:custom-chat".into(),
+            ..StoredAgentSettings::default()
+        };
+        settings
+            .encrypted_api_keys
+            .insert("deepseek".into(), "encrypted".into());
+
+        let settings = normalize_settings(settings);
+        let public = public_settings(&settings);
+
+        assert_eq!(settings.version, 2);
+        assert_eq!(
+            public.configured_models.get("deepseek"),
+            Some(&"deepseek:custom-chat".to_owned())
+        );
+        assert!(!public.configured_models.contains_key("openai"));
     }
 
     #[cfg(windows)]

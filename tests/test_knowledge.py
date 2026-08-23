@@ -9,7 +9,14 @@ from pydantic_ai.models.test import TestModel
 from agent_product.core.config import Settings
 from agent_product.main import create_app
 from agent_product.services.agent import AgentDependencies, build_agent
-from agent_product.services.knowledge import KnowledgeBase
+from agent_product.services.knowledge import (
+    CHUNK_FORCED_OVERLAP_TOKENS,
+    CHUNK_HARD_MAX_TOKENS,
+    CHUNK_POLICY_VERSION,
+    PARENT_CONTEXT_MAX_TOKENS,
+    KnowledgeBase,
+    _estimated_token_count,
+)
 
 
 def write_document(root: Path, relative_path: str, content: str) -> None:
@@ -73,6 +80,11 @@ def test_search_returns_ranked_excerpt_with_source_lines(tmp_path: Path) -> None
     assert first["source"] == "product/refunds.md"
     assert first["line_start"] > 1
     assert "product/refunds.md:L" in first["citation"]
+    assert first["context"] is None
+    context = knowledge_base.read_context(first["chunk_id"])
+    assert context["document_id"] == "product/refunds"
+    assert "三个工作日" in context["context"]
+    assert context["citation"]
 
 
 def test_document_status_and_tag_filters_are_enforced(tmp_path: Path) -> None:
@@ -85,6 +97,158 @@ def test_document_status_and_tag_filters_are_enforced(tmp_path: Path) -> None:
     assert [document["document_id"] for document in documents] == ["product/refunds"]
     assert matching["count"] >= 1
     assert missing["results"] == []
+
+
+def test_repeated_search_reuses_unchanged_document_and_chunk_snapshots(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    knowledge_base = make_knowledge_base(tmp_path)
+    original_chunks = knowledge_base._chunks
+    calls = 0
+
+    def counted_chunks(document):
+        nonlocal calls
+        calls += 1
+        return original_chunks(document)
+
+    monkeypatch.setattr(knowledge_base, "_chunks", counted_chunks)
+
+    knowledge_base.search("退款")
+    knowledge_base.search("多久到账")
+
+    assert calls == 1
+
+    source = knowledge_base.root / "product" / "refunds.md"
+    source.write_text(
+        source.read_text(encoding="utf-8").replace("三个工作日", "四个工作日"),
+        encoding="utf-8",
+    )
+    refreshed = knowledge_base.search("四个工作日")
+
+    assert calls == 2
+    assert "四个工作日" in refreshed["results"][0]["snippet"]
+
+
+def test_chunk_policy_preserves_heading_boundaries_and_short_documents(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "knowledge"
+    write_document(
+        root,
+        "guides/structured.md",
+        """---
+id: guides/structured
+title: 结构化指南
+status: active
+---
+
+# 结构化指南
+
+这是一段很短的文档介绍，不需要进行固定长度切分。
+
+## 安装
+
+安装章节只包含安装相关的信息。
+
+## 运维
+
+运维章节只包含运维相关的信息。
+""",
+    )
+    knowledge_base = KnowledgeBase(root)
+    document = knowledge_base._documents()[0]
+
+    chunks = knowledge_base._chunks(document)
+
+    assert [chunk.heading_path for chunk in chunks] == [
+        ("结构化指南",),
+        ("结构化指南", "安装"),
+        ("结构化指南", "运维"),
+    ]
+    assert all(chunk.policy_version == CHUNK_POLICY_VERSION for chunk in chunks)
+    assert all(chunk.context == chunk.text for chunk in chunks)
+    assert "安装章节" not in chunks[0].text
+    assert "运维章节" not in chunks[1].text
+
+
+def test_chunk_policy_forced_split_has_hard_limit_overlap_and_parent_context(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "knowledge"
+    long_paragraph = "甲" * 1_700
+    write_document(
+        root,
+        "guides/long.md",
+        """---
+id: guides/long
+title: 超长指南
+status: active
+---
+
+# 超长指南
+
+"""
+        + long_paragraph,
+    )
+    knowledge_base = KnowledgeBase(root)
+    document = knowledge_base._documents()[0]
+
+    chunks = knowledge_base._chunks(document)
+
+    assert len(chunks) > 1
+    assert all(chunk.token_count <= CHUNK_HARD_MAX_TOKENS for chunk in chunks)
+    assert (
+        chunks[0].text[-CHUNK_FORCED_OVERLAP_TOKENS:]
+        == chunks[1].text[:CHUNK_FORCED_OVERLAP_TOKENS]
+    )
+    assert all(chunk.chunk_id.startswith("kbch_") for chunk in chunks)
+    assert all(chunk.parent_chunk_id.startswith("kbctx_") for chunk in chunks)
+    assert all(
+        _estimated_token_count(chunk.context) <= PARENT_CONTEXT_MAX_TOKENS for chunk in chunks
+    )
+
+
+def test_chunk_policy_keeps_tables_and_code_blocks_as_standalone_elements(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "knowledge"
+    write_document(
+        root,
+        "guides/elements.md",
+        """---
+id: guides/elements
+title: 元素指南
+status: active
+---
+
+# 元素指南
+
+表格前的解释。
+
+| 名称 | 状态 |
+| --- | --- |
+| Agent | 可用 |
+
+```python
+def answer():
+    return 42
+```
+
+代码后的解释。
+""",
+    )
+    knowledge_base = KnowledgeBase(root)
+    document = knowledge_base._documents()[0]
+
+    chunks = knowledge_base._chunks(document)
+
+    table = next(chunk for chunk in chunks if chunk.text.startswith("| 名称"))
+    code = next(chunk for chunk in chunks if chunk.text.startswith("```python"))
+    assert table.text.endswith("| Agent | 可用 |")
+    assert code.text.endswith("```")
+    assert not table.mergeable
+    assert not code.mergeable
 
 
 def test_read_document_uses_stable_id_and_numbered_lines(tmp_path: Path) -> None:
@@ -127,9 +291,7 @@ def test_create_update_publish_and_archive_document(tmp_path: Path) -> None:
 
     assert published["action"] == "updated"
     assert published["revision"] != created["revision"]
-    assert knowledge_base.search("已经发布")["results"][0]["document_id"] == (
-        "product/new-guide"
-    )
+    assert knowledge_base.search("已经发布")["results"][0]["document_id"] == ("product/new-guide")
 
     archived = knowledge_base.save_document(
         document_id="product/new-guide",
@@ -143,9 +305,10 @@ def test_create_update_publish_and_archive_document(tmp_path: Path) -> None:
 
     assert archived["status"] == "archived"
     assert knowledge_base.search("已经发布")["count"] == 0
-    assert knowledge_base.get_document(
-        "product/new-guide", include_inactive=True
-    )["status"] == "archived"
+    assert (
+        knowledge_base.get_document("product/new-guide", include_inactive=True)["status"]
+        == "archived"
+    )
 
 
 def test_agent_can_call_the_knowledge_search_tool(tmp_path: Path) -> None:
@@ -209,23 +372,81 @@ def test_knowledge_http_api_searches_and_reads_documents(tmp_path: Path) -> None
     headers = {"X-Tenant-ID": "tenant-a"}
 
     with TestClient(app) as client:
+        libraries = client.get("/v1/knowledge/libraries", headers=headers)
+        sources = client.get(
+            "/v1/knowledge/libraries/default/sources",
+            headers=headers,
+        )
+        missing_library = client.get(
+            "/v1/knowledge/libraries/missing/sources",
+            headers=headers,
+        )
+        policy = client.get("/v1/knowledge/chunk-policy", headers=headers)
+        index_status = client.get("/v1/knowledge/index-status", headers=headers)
         listed = client.get("/v1/knowledge/documents", headers=headers)
         searched = client.post(
             "/v1/knowledge/search",
             headers=headers,
             json={"query": "退款多久到账", "limit": 2},
         )
+        outside_library = client.post(
+            "/v1/knowledge/search",
+            headers=headers,
+            json={"query": "退款多久到账", "library_ids": ["other"]},
+        )
+        expanded = client.post(
+            "/v1/knowledge/search",
+            headers=headers,
+            json={"query": "退款多久到账", "limit": 1, "include_context": True},
+        )
+        context = client.get(
+            "/v1/knowledge/chunks/"
+            f"{searched.json()['results'][0]['chunk_id']}/context",
+            headers=headers,
+        )
         read = client.get(
             "/v1/knowledge/documents/product/refunds?start_line=9&end_line=12",
             headers=headers,
         )
 
+    assert libraries.status_code == 200
+    assert libraries.json()[0]["library_id"] == "default"
+    assert libraries.json()[0]["retrievable_document_count"] == 1
+    assert sources.status_code == 200
+    assert {source["source_id"] for source in sources.json()} == {
+        "product/refunds",
+        "drafts/future",
+    }
+    assert missing_library.status_code == 404
+    assert policy.status_code == 200
+    assert policy.json()["version"] == CHUNK_POLICY_VERSION
+    assert policy.json()["hard_max_tokens"] == CHUNK_HARD_MAX_TOKENS
+    assert index_status.status_code == 200
+    assert index_status.json()["backend"] == "memory_lexical"
+    assert index_status.json()["retrieval_modes"] == ["lexical"]
+    assert index_status.json()["chunk_count"] > 0
+    assert index_status.json()["embedding_model"] is None
     assert listed.status_code == 200
     assert listed.json()[0]["document_id"] == "product/refunds"
     assert searched.status_code == 200
     assert searched.json()["results"][0]["document_id"] == "product/refunds"
+    assert searched.json()["results"][0]["library_id"] == "default"
+    assert searched.json()["results"][0]["source_id"] == "product/refunds"
+    assert searched.json()["chunk_policy_version"] == CHUNK_POLICY_VERSION
+    assert searched.json()["results"][0]["heading_path"] == ["退款处理政策", "到账时间"]
+    assert searched.json()["results"][0]["chunk_id"].startswith("kbch_")
+    assert searched.json()["results"][0]["context"] is None
+    assert searched.json()["results"][0]["context_citation"] is None
+    assert expanded.status_code == 200
+    assert expanded.json()["results"][0]["context_citation"]
+    assert context.status_code == 200
+    assert context.json()["document_id"] == "product/refunds"
+    assert "三个工作日" in context.json()["context"]
+    assert outside_library.status_code == 200
+    assert outside_library.json()["results"] == []
     assert read.status_code == 200
     assert read.json()["source_uri"] == "kb://product/refunds"
+    assert read.json()["library_id"] == "default"
 
 
 def test_knowledge_management_api_saves_and_checks_revisions(tmp_path: Path) -> None:

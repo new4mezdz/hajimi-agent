@@ -13,5 +13,6 @@ dist/
 .pnpm-store/
 web/src-tauri/target/
 web/src-tauri/gen/
+web/src-tauri/binaries/*.exe
 data/*.db
 data/*.db-*

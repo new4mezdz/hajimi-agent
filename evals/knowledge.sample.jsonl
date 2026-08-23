@@ -1,0 +1,2 @@
+{"id":"knowledge-architecture","query":"知识库当前使用什么索引，权限由哪一层控制？","expected_document_ids":["system/knowledge-base-overview"],"tags":["knowledge-base"]}
+{"id":"support-refund-policy","query":"客服 Agent 可以直接执行退款吗？","expected_document_ids":["support/refund-policy"],"tags":["support"]}

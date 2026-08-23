@@ -5,10 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:desktop": "pnpm build && pnpm desktop:sidecar",
     "start": "next start",
     "lint": "eslint",
     "desktop:dev": "tauri dev",
-    "desktop:check": "tauri info"
+    "desktop:check": "tauri info",
+    "desktop:sidecar": "..\\.venv\\Scripts\\python.exe ..\\tools\\build_desktop_sidecar.py",
+    "desktop:build": "tauri build"
   },
   "dependencies": {
     "@ai-sdk/react": "4.0.34",

@@ -1,9 +1,10 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agent_product.db.models import Conversation
+from agent_product.db.models import Conversation, ConversationProfile
 
 
 class ConversationConflictError(RuntimeError):
@@ -25,12 +26,90 @@ class ConversationRepository:
         statement = select(Conversation).where(Conversation.id == conversation_id)
         return await self.session.scalar(statement)
 
-    async def create(self, conversation_id: str, tenant_id: str) -> Conversation:
+    async def create(
+        self,
+        conversation_id: str,
+        tenant_id: str,
+        *,
+        profile_id: str,
+        profile_version: str,
+        profile_hash: str,
+    ) -> Conversation:
         conversation = Conversation(id=conversation_id, tenant_id=tenant_id)
-        self.session.add(conversation)
+        binding = ConversationProfile(
+            conversation_id=conversation_id,
+            tenant_id=tenant_id,
+            profile_id=profile_id,
+            profile_version=profile_version,
+            profile_hash=profile_hash,
+        )
+        self.session.add_all((conversation, binding))
         await self.session.commit()
         await self.session.refresh(conversation)
         return conversation
+
+    async def get_profile(
+        self,
+        conversation_id: str,
+        tenant_id: str,
+    ) -> ConversationProfile | None:
+        statement = select(ConversationProfile).where(
+            ConversationProfile.conversation_id == conversation_id,
+            ConversationProfile.tenant_id == tenant_id,
+        )
+        return await self.session.scalar(statement)
+
+    async def bind_profile(
+        self,
+        conversation_id: str,
+        tenant_id: str,
+        *,
+        profile_id: str,
+        profile_version: str,
+        profile_hash: str,
+    ) -> ConversationProfile:
+        existing = await self.get_profile(conversation_id, tenant_id)
+        if existing is not None:
+            return existing
+        binding = ConversationProfile(
+            conversation_id=conversation_id,
+            tenant_id=tenant_id,
+            profile_id=profile_id,
+            profile_version=profile_version,
+            profile_hash=profile_hash,
+        )
+        self.session.add(binding)
+        try:
+            await self.session.commit()
+        except IntegrityError:
+            await self.session.rollback()
+            concurrent = await self.get_profile(conversation_id, tenant_id)
+            if concurrent is None:
+                raise
+            return concurrent
+        await self.session.refresh(binding)
+        return binding
+
+    async def update_profile_hash(
+        self,
+        conversation_id: str,
+        tenant_id: str,
+        *,
+        expected_hash: str,
+        profile_hash: str,
+    ) -> bool:
+        statement = (
+            update(ConversationProfile)
+            .where(
+                ConversationProfile.conversation_id == conversation_id,
+                ConversationProfile.tenant_id == tenant_id,
+                ConversationProfile.profile_hash == expected_hash,
+            )
+            .values(profile_hash=profile_hash)
+        )
+        result = await self.session.execute(statement)
+        await self.session.commit()
+        return result.rowcount == 1
 
     async def save_history(
         self,

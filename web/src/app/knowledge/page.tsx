@@ -22,9 +22,9 @@ import Link from "next/link";
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { AGENT_API_BASE, agentFetch } from "@/lib/agent-fetch";
 import styles from "./page.module.css";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 const TENANT_ID = "local";
 
 type DocumentStatus = "draft" | "active" | "published" | "archived" | "excluded";
@@ -61,7 +61,13 @@ type SearchHit = {
   document_id: string;
   title: string;
   section: string;
+  heading_path: string[];
+  chunk_id: string;
+  parent_chunk_id: string;
+  chunk_policy_version: number;
+  token_count: number;
   snippet: string;
+  context?: string | null;
   source: string;
   line_start: number;
   line_end: number;
@@ -181,6 +187,7 @@ export default function KnowledgePage() {
   const [preview, setPreview] = useState(false);
   const [testQuery, setTestQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
+  const [chunkPolicyVersion, setChunkPolicyVersion] = useState<number | null>(null);
   const [searching, setSearching] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -188,7 +195,7 @@ export default function KnowledgePage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE}/v1/knowledge/manage/documents`, {
+      const response = await agentFetch(`${AGENT_API_BASE}/v1/knowledge/manage/documents`, {
         headers: requestHeaders(),
       });
       if (!response.ok) throw new Error(await readApiError(response, "知识文档加载失败"));
@@ -211,7 +218,7 @@ export default function KnowledgePage() {
     let cancelled = false;
     async function initialLoad() {
       try {
-        const response = await fetch(`${API_BASE}/v1/knowledge/manage/documents`, {
+        const response = await agentFetch(`${AGENT_API_BASE}/v1/knowledge/manage/documents`, {
           headers: requestHeaders(),
         });
         if (!response.ok) throw new Error(await readApiError(response, "知识文档加载失败"));
@@ -241,8 +248,8 @@ export default function KnowledgePage() {
       setDocumentLoading(true);
       setError(null);
       try {
-        const response = await fetch(
-          `${API_BASE}/v1/knowledge/manage/documents/${documentPath(selectedId!)}`,
+        const response = await agentFetch(
+          `${AGENT_API_BASE}/v1/knowledge/manage/documents/${documentPath(selectedId!)}`,
           { headers: requestHeaders() },
         );
         if (!response.ok) throw new Error(await readApiError(response, "知识文档读取失败"));
@@ -335,10 +342,10 @@ export default function KnowledgePage() {
     };
     const editing = draft.revision !== null;
     const endpoint = editing
-      ? `${API_BASE}/v1/knowledge/manage/documents/${documentPath(documentId)}`
-      : `${API_BASE}/v1/knowledge/manage/documents`;
+      ? `${AGENT_API_BASE}/v1/knowledge/manage/documents/${documentPath(documentId)}`
+      : `${AGENT_API_BASE}/v1/knowledge/manage/documents`;
     try {
-      const response = await fetch(endpoint, {
+      const response = await agentFetch(endpoint, {
         method: editing ? "PUT" : "POST",
         headers: requestHeaders(true),
         body: JSON.stringify(payload),
@@ -382,14 +389,15 @@ export default function KnowledgePage() {
     setSearching(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE}/v1/knowledge/search`, {
+      const response = await agentFetch(`${AGENT_API_BASE}/v1/knowledge/search`, {
         method: "POST",
         headers: requestHeaders(true),
         body: JSON.stringify({ query, limit: 5, tags: [] }),
       });
       if (!response.ok) throw new Error(await readApiError(response, "检索测试失败"));
-      const payload = (await response.json()) as { results: SearchHit[] };
+      const payload = (await response.json()) as { chunk_policy_version: number; results: SearchHit[] };
       setSearchResults(payload.results);
+      setChunkPolicyVersion(payload.chunk_policy_version);
     } catch (searchError) {
       setError(searchError instanceof Error ? searchError.message : "检索测试失败");
     } finally {
@@ -554,14 +562,20 @@ export default function KnowledgePage() {
             开始检索
           </button>
         </form>
-        <div className={styles.testNote}>检索测试只会命中已发布文档；尚未保存的编辑内容不会参与。</div>
+        <div className={styles.testNote}>
+          检索测试只会命中已发布文档；尚未保存的编辑内容不会参与。
+          {chunkPolicyVersion ? ` 当前使用 Chunk Policy V${chunkPolicyVersion}。` : ""}
+        </div>
 
         <div className={styles.results}>
           {searchResults.length ? searchResults.map((result, index) => (
             <article key={`${result.document_id}-${result.line_start}`} className={styles.resultCard}>
-              <header><span>#{index + 1}</span><em>{result.score.toFixed(2)}</em></header>
+              <header>
+                <span>#{index + 1}</span>
+                <em>{result.score.toFixed(2)} · {result.token_count} tokens · V{result.chunk_policy_version}</em>
+              </header>
               <strong>{result.title}</strong>
-              <small>{result.section}</small>
+              <small>{result.heading_path.join(" / ")}</small>
               <p>{result.snippet}</p>
               <footer>{result.source}:L{result.line_start}-L{result.line_end}</footer>
             </article>

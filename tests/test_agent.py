@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from pydantic import SecretStr
 from pydantic_ai import (
     DeferredToolRequests,
@@ -126,6 +127,114 @@ def test_write_tool_pauses_until_explicit_approval(tmp_path: Path) -> None:
     assert (root / "notes" / "approved.txt").read_text(encoding="utf-8") == "approved\n"
 
 
+@pytest.mark.parametrize(
+    ("tool_name", "arguments", "target", "expected"),
+    [
+        (
+            "create_file",
+            {"path": "created.txt", "content": "created\n"},
+            "created.txt",
+            "created\n",
+        ),
+        (
+            "apply_patch",
+            {
+                "path": "source.txt",
+                "old_text": "before\n",
+                "new_text": "after\n",
+            },
+            "source.txt",
+            "after\n",
+        ),
+    ],
+)
+def test_new_workspace_write_tools_require_approval(
+    tmp_path: Path,
+    tool_name: str,
+    arguments: dict[str, str],
+    target: str,
+    expected: str,
+) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "source.txt").write_bytes(b"before\n")
+    workspace = WorkspaceRegistry().create(str(root), "tenant-a")
+
+    def tool_model(messages, info):
+        del info
+        if any(
+            isinstance(part, ToolReturnPart)
+            for message in messages
+            for part in message.parts
+        ):
+            return ModelResponse(parts=[TextPart(content="Workspace change completed.")])
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name=tool_name,
+                    args=arguments,
+                    tool_call_id=f"{tool_name}-approval-1",
+                )
+            ]
+        )
+
+    agent = build_agent(
+        Settings(ai_model="test", web_search_enabled=False),
+        model=FunctionModel(tool_model),
+    )
+    dependencies = AgentDependencies(
+        tenant_id="tenant-a",
+        request_id="request-1",
+        workspace=workspace,
+    )
+
+    first = agent.run_sync("Change the workspace", deps=dependencies)
+    assert isinstance(first.output, DeferredToolRequests)
+    if tool_name == "create_file":
+        assert not (root / target).exists()
+    else:
+        assert (root / target).read_text(encoding="utf-8") == "before\n"
+
+    approval = DeferredToolResults(
+        approvals={first.output.approvals[0].tool_call_id: True}
+    )
+    resumed = agent.run_sync(
+        "Continue after approval",
+        deps=dependencies,
+        message_history=first.all_messages(),
+        deferred_tool_results=approval,
+    )
+
+    assert resumed.output == "Workspace change completed."
+    assert (root / target).read_text(encoding="utf-8") == expected
+
+
+def test_agent_offers_recommended_base_tools() -> None:
+    offered_tools: set[str] = set()
+
+    def inspect_model(messages, info):
+        del messages
+        offered_tools.update(tool.name for tool in info.function_tools)
+        return ModelResponse(parts=[TextPart(content="Tools inspected.")])
+
+    agent = build_agent(
+        Settings(ai_model="test", web_search_enabled=False),
+        model=FunctionModel(inspect_model),
+    )
+
+    result = agent.run_sync("Inspect available tools")
+
+    assert result.output == "Tools inspected."
+    assert {
+        "list_files",
+        "read_file",
+        "search_text",
+        "calculator",
+        "create_file",
+        "apply_patch",
+    } <= offered_tools
+
+
 def test_read_only_mode_does_not_offer_write_tool() -> None:
     offered_tools: set[str] = set()
 
@@ -146,5 +255,5 @@ def test_read_only_mode_does_not_offer_write_tool() -> None:
     result = agent.run_sync("Inspect the workspace")
 
     assert result.output == "Read-only mode is active."
-    assert {"list_files", "read_file", "search_text"} <= offered_tools
-    assert "write_file" not in offered_tools
+    assert {"list_files", "read_file", "search_text", "calculator"} <= offered_tools
+    assert {"write_file", "create_file", "apply_patch"}.isdisjoint(offered_tools)

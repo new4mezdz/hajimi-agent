@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=20_000)
     conversation_id: UUID | None = None
+    profile_id: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class TokenUsage(BaseModel):
@@ -20,6 +21,8 @@ class ChatResponse(BaseModel):
     version: int
     message: str
     model: str
+    profile_id: str
+    profile_version: str
     usage: TokenUsage
 
 
@@ -29,6 +32,7 @@ class ConversationResponse(BaseModel):
     id: UUID
     tenant_id: str
     version: int
+    profile_id: str
+    profile_version: str
     created_at: datetime
     updated_at: datetime
-
