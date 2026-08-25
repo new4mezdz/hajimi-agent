@@ -4,6 +4,8 @@
 [Pydantic AI](https://github.com/pydantic/pydantic-ai) 和 FastAPI，前端采用
 Next.js、React 与 Vercel AI SDK。
 
+![哈基米sama 代码工作台预览](docs/screenshots/workspace-overview.png)
+
 当前版本提供：
 
 - 可替换模型供应商的 Agent 服务层
@@ -91,6 +93,8 @@ pnpm desktop:dev
 `create_file`、`apply_patch` 或 `write_file`；读取仍受已授权工作区和路径规范化规则限制。
 浏览器开发模式继续通过 `.env` 配置密钥。
 
+![工作区权限设置预览](docs/screenshots/settings-permissions.png)
+
 构建无需 Python 环境的 Windows 独立安装包：
 
 ```powershell
@@ -112,6 +116,8 @@ pnpm desktop:build
 客户端展示提交文件、消息或远端分支，用户再次确认后才执行。确认后仓库内容或 HEAD 发生变化会
 自动拒绝；敏感/忽略路径、合并冲突、Git clean filter、仓库本地凭据助手和危险 remote helper
 也会阻止操作。Agent 创建提交时禁用 Git hooks，推送永远不使用 `--force`。
+
+![Git 变更审查预览](docs/screenshots/git-change-review.png)
 
 ## Agent Profile
 
@@ -146,6 +152,8 @@ Schema。执行过程追加到 `conversation_events`，可通过
 不是静默覆盖。客户端本地知识库的 V2 结构见
 [`docs/knowledge-system-v2.md`](docs/knowledge-system-v2.md)。
 
+![知识管理与检索验证预览](docs/screenshots/knowledge-management.png)
+
 开发和生产环境默认使用持久化增量 SQLite FTS5 索引；`app_env=test` 自动使用内存索引。文件未
 变化时会复用文档与 Chunk 快照，只对新增、修改和删除内容更新索引。运行
 `python tools/evaluate_knowledge.py evals/knowledge.sample.jsonl` 可以计算固定检索集的 Hit Rate 和 MRR。
@@ -163,6 +171,8 @@ Schema。执行过程追加到 `conversation_events`，可通过
 它不能执行支付退款或库存扣减；需要动作时只能提议 `create_support_case`，用户批准后才在数据库事务中
 创建租户隔离售后工单。数据清单见
 [`examples/support/demo-data.json`](examples/support/demo-data.json)。
+
+![客服 Agent 预览](docs/screenshots/support-agent.png)
 
 客服 Profile 还会按需加载 `order-delivery-status`、`after-sales-resolution`、
 `refund-exception-review` 和 `delivery-exception-triage` 四个流程 Skill。前端会显示 Skill 加载卡、
