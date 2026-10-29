@@ -23,6 +23,7 @@ from agent_product.db.models import (
 
 ISSUE_TYPES = {"damaged", "delivery", "missing", "other"}
 RESOLUTIONS = {"refund", "replacement", "manual_review"}
+ORDER_SEARCH_STATUSES = frozenset({"processing", "in_transit", "delivered", "not_delivered"})
 
 
 class SupportError(ValueError):
@@ -432,12 +433,22 @@ class SupportService:
         status_hint: str | None = None,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
+        """Find customer-owned orders by order date, literal product text and supported status.
+
+        ``not_delivered`` combines processing and in-transit orders. It does not
+        include terminal states such as cancelled just because they are not delivered.
+        """
         if days < 1 or days > 365:
             raise SupportError("days must be between 1 and 365")
         if limit < 1 or limit > 20:
             raise SupportError("limit must be between 1 and 20")
         product_hint = product_hint.strip() if product_hint else None
         status_hint = status_hint.casefold().strip() if status_hint else None
+        if status_hint and status_hint not in ORDER_SEARCH_STATUSES:
+            raise SupportError(
+                f"status_hint must be one of {', '.join(sorted(ORDER_SEARCH_STATUSES))}; "
+                "use not_delivered for processing or in_transit orders"
+            )
         cutoff = datetime.now(UTC) - timedelta(days=days)
         statement = (
             select(CommerceOrder)
@@ -449,7 +460,9 @@ class SupportService:
             .order_by(CommerceOrder.created_at.desc())
             .limit(limit)
         )
-        if status_hint:
+        if status_hint == "not_delivered":
+            statement = statement.where(CommerceOrder.status.in_(("processing", "in_transit")))
+        elif status_hint:
             statement = statement.where(CommerceOrder.status == status_hint)
         if product_hint:
             statement = statement.join(

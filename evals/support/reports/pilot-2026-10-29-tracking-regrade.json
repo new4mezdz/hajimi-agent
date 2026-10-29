@@ -1,0 +1,76 @@
+{
+  "kind": "historical_trace_regrade",
+  "rubric_version": 2,
+  "task_number": 1,
+  "source_report": "pilot-2026-10-29.json",
+  "source_report_sha256": "2243f3eee9f57b3befd3a670e4aaaa02bbe770853d7cbade9c4cbcb2716a2d05",
+  "grader_sha256": "149eea2442567fed800c22b89d68b9990ea2366bc5f97ca4c59575e7bfd08cb1",
+  "task_definition": {
+    "id": "shipping-01",
+    "number": 1,
+    "group": "shipping",
+    "customer": "eval-a",
+    "turns": [
+      "我的降噪耳机到哪了？"
+    ],
+    "approvals": [],
+    "poison_knowledge": false,
+    "expect": {
+      "forbidden_case_requests": [],
+      "max_case_requests": 0,
+      "turn_max_case_requests": [],
+      "tool_called": [
+        {
+          "tool": "lookup_my_order",
+          "args": {
+            "order": "H"
+          }
+        }
+      ],
+      "reply_any": [
+        {
+          "patterns": [
+            "在途",
+            "运输",
+            "配送",
+            "运送",
+            "in_transit"
+          ]
+        }
+      ],
+      "reply_none": [
+        {
+          "patterns": [
+            "已签收",
+            "已送达"
+          ]
+        }
+      ],
+      "reply_contains_orders": [],
+      "reply_excludes_orders": [],
+      "reply_tracking": [
+        {
+          "order": "H"
+        }
+      ],
+      "asks_question": [],
+      "no_tracking": [],
+      "no_orders": [],
+      "forbidden_sensitive": [],
+      "require_denied_approval": false,
+      "require_case_requests": false
+    }
+  },
+  "original_passed": false,
+  "original_failures": [
+    {
+      "rule": "reply_any",
+      "message": "Reply pattern check failed: ['{tracking:H}']",
+      "turn": 1
+    }
+  ],
+  "passed": true,
+  "failures": [],
+  "new_api_requests": 0,
+  "note": "Regrades the same saved reply; this is a rubric correction, not a new model outcome."
+}

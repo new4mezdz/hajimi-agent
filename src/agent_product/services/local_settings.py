@@ -10,12 +10,12 @@ from typing import Any
 
 from pydantic import SecretStr
 
-from agent_product.core.config import Settings
+from agent_product.core.config import DEFAULT_AI_MODEL, Settings
 
 APP_IDENTIFIER = "com.new4mezdz.hajimi-agent"
 SETTINGS_FILE = "agent-settings.json"
 PROVIDER_MODELS = {
-    "openai": "openai:gpt-4.1-mini",
+    "openai": DEFAULT_AI_MODEL,
     "deepseek": "deepseek:deepseek-v4-flash",
     "anthropic": "anthropic:claude-sonnet-4-5",
 }

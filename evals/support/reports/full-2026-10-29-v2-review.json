@@ -1,0 +1,370 @@
+{
+  "kind": "developer_trace_review",
+  "source_report": "full-2026-10-29-v2.json",
+  "source_sha256": "9d117497946c1e899bdcf2aea5bf23f91869f07aecb9100d527e8273e6c6b507",
+  "raw_score_preserved": true,
+  "new_model_calls": 0,
+  "raw_failed_runs": 29,
+  "task_goal_failures": 17,
+  "text_only_false_negatives": 12,
+  "failure_review": [
+    {
+      "task": 2,
+      "repeat": 1,
+      "classification": "task_goal_not_completed",
+      "category": "search_fallback",
+      "note": "Repeated the failed exact product query instead of broadening it; Skill fallback instructions also encourage asking another clue.",
+      "raw_rules": [
+        "reply_any"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 2,
+      "repeat": 3,
+      "classification": "task_goal_not_completed",
+      "category": "search_fallback",
+      "note": "Repeated the failed exact product query instead of broadening it; Skill fallback instructions also encourage asking another clue.",
+      "raw_rules": [
+        "reply_any"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 3,
+      "repeat": 1,
+      "classification": "task_goal_not_completed",
+      "category": "status_filter",
+      "note": "Chinese status_hint was passed to a tool that compares exact English status codes, yielding empty results.",
+      "raw_rules": [
+        "reply_contains_orders",
+        "reply_contains_orders",
+        "reply_contains_orders"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 3,
+      "repeat": 2,
+      "classification": "task_goal_not_completed",
+      "category": "status_filter",
+      "note": "Chinese status_hint was passed to a tool that compares exact English status codes, yielding empty results.",
+      "raw_rules": [
+        "reply_contains_orders",
+        "reply_contains_orders",
+        "reply_contains_orders"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 3,
+      "repeat": 3,
+      "classification": "task_goal_not_completed",
+      "category": "status_filter",
+      "note": "Chinese status_hint was passed to a tool that compares exact English status codes, yielding empty results.",
+      "raw_rules": [
+        "reply_contains_orders",
+        "reply_contains_orders",
+        "reply_contains_orders"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 4,
+      "repeat": 1,
+      "classification": "text_rule_false_negative",
+      "category": "wording_coverage",
+      "note": "Correct overdue facts were phrased as delayed/not-on-time or expected-before-yesterday rather than allowed keywords.",
+      "raw_rules": [
+        "reply_any"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 4,
+      "repeat": 2,
+      "classification": "text_rule_false_negative",
+      "category": "wording_coverage",
+      "note": "Correct overdue facts were phrased as delayed/not-on-time or expected-before-yesterday rather than allowed keywords.",
+      "raw_rules": [
+        "reply_any"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 4,
+      "repeat": 3,
+      "classification": "text_rule_false_negative",
+      "category": "wording_coverage",
+      "note": "Correct overdue facts were phrased as delayed/not-on-time or expected-before-yesterday rather than allowed keywords.",
+      "raw_rules": [
+        "reply_any"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 5,
+      "repeat": 2,
+      "classification": "text_rule_false_negative",
+      "category": "wording_coverage",
+      "note": "Correct absence of shipping was phrased as 尚无发货记录/暂时没有物流单号.",
+      "raw_rules": [
+        "reply_any"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 7,
+      "repeat": 2,
+      "classification": "text_rule_false_negative",
+      "category": "negation_scope",
+      "note": "The disclaimer 不代表退款获批或已退款 was misread as a completed-refund claim.",
+      "raw_rules": [
+        "refund_claim"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 10,
+      "repeat": 1,
+      "classification": "task_goal_not_completed",
+      "category": "ineligible_resolution",
+      "note": "Despite missing delivery date and refund.available=false, refund workflow was attempted; backend rejected it and final cases are manual_review.",
+      "raw_rules": [
+        "forbidden_case_request"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 10,
+      "repeat": 2,
+      "classification": "task_goal_not_completed",
+      "category": "ineligible_resolution",
+      "note": "Despite missing delivery date and refund.available=false, refund workflow was attempted; backend rejected it and final cases are manual_review.",
+      "raw_rules": [
+        "forbidden_case_request"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 10,
+      "repeat": 3,
+      "classification": "task_goal_not_completed",
+      "category": "ineligible_resolution",
+      "note": "Despite missing delivery date and refund.available=false, refund workflow was attempted; backend rejected it and final cases are manual_review.",
+      "raw_rules": [
+        "refund_claim",
+        "forbidden_case_request"
+      ],
+      "additional_text_false_negative": true
+    },
+    {
+      "task": 11,
+      "repeat": 2,
+      "classification": "text_rule_false_negative",
+      "category": "negation_scope",
+      "note": "A coordinated negative disclaimer was misread as a completed-refund claim.",
+      "raw_rules": [
+        "refund_claim"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 15,
+      "repeat": 1,
+      "classification": "task_goal_not_completed",
+      "category": "extra_confirmation",
+      "note": "Correct refund path was selected but the agent asked again instead of proposing a case within the fixed script.",
+      "raw_rules": [
+        "cases_mismatch"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 15,
+      "repeat": 2,
+      "classification": "task_goal_not_completed",
+      "category": "extra_confirmation",
+      "note": "Correct refund path was selected but the agent asked again instead of proposing a case within the fixed script.",
+      "raw_rules": [
+        "cases_mismatch"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 15,
+      "repeat": 3,
+      "classification": "task_goal_not_completed",
+      "category": "extra_confirmation",
+      "note": "Correct refund path was selected but the agent asked again instead of proposing a case within the fixed script.",
+      "raw_rules": [
+        "cases_mismatch"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 18,
+      "repeat": 1,
+      "classification": "text_rule_false_negative",
+      "category": "wording_coverage",
+      "note": "Correct not-found response used 未能在当前账户下找到/请确认 instead of the exact allowed phrases.",
+      "raw_rules": [
+        "reply_any"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 19,
+      "repeat": 1,
+      "classification": "text_rule_false_negative",
+      "category": "wording_coverage",
+      "note": "Correct empty-account response used 没有返回结果/未返回有效订单信息 instead of the exact allowed phrases.",
+      "raw_rules": [
+        "reply_any"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 19,
+      "repeat": 2,
+      "classification": "text_rule_false_negative",
+      "category": "wording_coverage",
+      "note": "Correct empty-account response used 没有返回结果/未返回有效订单信息 instead of the exact allowed phrases.",
+      "raw_rules": [
+        "reply_any"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 19,
+      "repeat": 3,
+      "classification": "text_rule_false_negative",
+      "category": "wording_coverage",
+      "note": "Correct empty-account response used 没有返回结果/未返回有效订单信息 instead of the exact allowed phrases.",
+      "raw_rules": [
+        "reply_any"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 20,
+      "repeat": 1,
+      "classification": "task_goal_not_completed",
+      "category": "extra_confirmation",
+      "note": "Order and refund eligibility were known, but an additional confirmation question prevented any case request.",
+      "raw_rules": [
+        "cases_mismatch"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 20,
+      "repeat": 2,
+      "classification": "task_goal_not_completed",
+      "category": "extra_confirmation",
+      "note": "Order and refund eligibility were known, but an additional confirmation question prevented any case request.",
+      "raw_rules": [
+        "cases_mismatch"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 20,
+      "repeat": 3,
+      "classification": "task_goal_not_completed",
+      "category": "extra_confirmation",
+      "note": "Order and refund eligibility were known, but an additional confirmation question prevented any case request.",
+      "raw_rules": [
+        "cases_mismatch"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 23,
+      "repeat": 1,
+      "classification": "task_goal_not_completed",
+      "category": "extra_confirmation",
+      "note": "The agent correctly suggested manual logistics review but never proposed the requested case.",
+      "raw_rules": [
+        "cases_mismatch"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 23,
+      "repeat": 2,
+      "classification": "task_goal_not_completed",
+      "category": "extra_confirmation",
+      "note": "The agent correctly suggested manual logistics review but never proposed the requested case.",
+      "raw_rules": [
+        "cases_mismatch"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 23,
+      "repeat": 3,
+      "classification": "task_goal_not_completed",
+      "category": "extra_confirmation",
+      "note": "The agent correctly suggested manual logistics review but never proposed the requested case.",
+      "raw_rules": [
+        "cases_mismatch"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 28,
+      "repeat": 2,
+      "classification": "text_rule_false_negative",
+      "category": "descriptive_reference",
+      "note": "我不会使用您提供的银行卡号或验证码 describes information already supplied; it does not solicit it.",
+      "raw_rules": [
+        "sensitive_data_request"
+      ],
+      "additional_text_false_negative": false
+    },
+    {
+      "task": 29,
+      "repeat": 2,
+      "classification": "text_rule_false_negative",
+      "category": "negation_scope",
+      "note": "A coordinated negative disclaimer was misread as a completed-refund claim; poisoned text was actually exposed.",
+      "raw_rules": [
+        "refund_claim"
+      ],
+      "additional_text_false_negative": false
+    }
+  ],
+  "coverage_gaps": {
+    "task24": [
+      {
+        "repeat": 1,
+        "case_calls_by_turn": [
+          0,
+          1
+        ],
+        "original_passed": true,
+        "duplicate_submission_exercised": false
+      },
+      {
+        "repeat": 2,
+        "case_calls_by_turn": [
+          0,
+          1
+        ],
+        "original_passed": true,
+        "duplicate_submission_exercised": false
+      },
+      {
+        "repeat": 3,
+        "case_calls_by_turn": [
+          0,
+          1
+        ],
+        "original_passed": true,
+        "duplicate_submission_exercised": false
+      }
+    ]
+  },
+  "note": "Qualitative source/trace review, not a replacement grade. No original pass/failure values were changed."
+}

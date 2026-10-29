@@ -4,6 +4,8 @@ from pathlib import Path
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_AI_MODEL = "openai:gpt-6.1-sol"
+
 
 class Settings(BaseSettings):
     """Environment-backed application settings."""
@@ -19,7 +21,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
 
-    ai_model: str = "openai:gpt-4.1-mini"
+    ai_model: str = DEFAULT_AI_MODEL
     default_agent_profile: str = "code"
     agent_profile_dir: str | None = "agent_profiles"
     agent_instructions: str = (

@@ -32,7 +32,7 @@ impl Default for StoredAgentSettings {
         Self {
             version: 2,
             provider: "openai".into(),
-            model: "openai:gpt-4.1-mini".into(),
+            model: "openai:gpt-6.1-sol".into(),
             models: BTreeMap::new(),
             web_search_enabled: true,
             workspace_write_enabled: true,
@@ -81,7 +81,7 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
 
 fn default_model(provider: &str) -> Option<&'static str> {
     match provider {
-        "openai" => Some("openai:gpt-4.1-mini"),
+        "openai" => Some("openai:gpt-6.1-sol"),
         "deepseek" => Some("deepseek:deepseek-v4-flash"),
         "anthropic" => Some("anthropic:claude-sonnet-4-5"),
         _ => None,

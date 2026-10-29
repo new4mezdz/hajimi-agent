@@ -20,7 +20,8 @@ def test_ready(client: TestClient) -> None:
 def test_app_starts_before_provider_key_is_configured(tmp_path) -> None:
     settings = Settings(
         app_env="test",
-        ai_model="openai:gpt-4.1-mini",
+        ai_model="openai:gpt-6.1-sol",
+        openai_api_key=None,
         database_url=f"sqlite+aiosqlite:///{(tmp_path / 'no-key.db').as_posix()}",
     )
     app = create_app(settings=settings)

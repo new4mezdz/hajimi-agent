@@ -217,7 +217,7 @@ function settingsInput(settings: AgentSettings): AgentSettingsInput {
 
 const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   provider: "openai",
-  model: "openai:gpt-4.1-mini",
+  model: "openai:gpt-6.1-sol",
   configuredModels: {},
   webSearchEnabled: true,
   workspaceWriteEnabled: true,
@@ -235,8 +235,8 @@ const PROVIDERS: Record<
 > = {
   openai: {
     name: "OpenAI",
-    description: "GPT 系列模型",
-    defaultModel: "openai:gpt-4.1-mini",
+    description: "OpenAI 开发者平台 · GPT-6.1 Sol",
+    defaultModel: "openai:gpt-6.1-sol",
     keyPlaceholder: "sk-…",
   },
   deepseek: {

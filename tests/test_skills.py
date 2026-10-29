@@ -234,5 +234,5 @@ def test_loaded_skill_produces_auditable_skill_event() -> None:
     events = completed_run_events("turn-skill-1", captured_result)
     skill_event = next(payload for kind, payload in events if kind == "skill.loaded")
     assert skill_event["name"] == "after-sales-resolution"
-    assert skill_event["version"] == "1"
+    assert skill_event["version"] == "3"
     assert skill_event["revision"]

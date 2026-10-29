@@ -5,7 +5,9 @@ from typing import Any
 
 from pydantic_ai import Agent, DeferredToolRequests, ModelMessage, RunContext
 from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.openai import OpenAIResponsesModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from agent_product.capabilities import build_capability_registry
 from agent_product.capabilities.base import (
@@ -13,7 +15,7 @@ from agent_product.capabilities.base import (
     CapabilityPack,
     CapabilityRegistry,
 )
-from agent_product.core.config import Settings
+from agent_product.core.config import DEFAULT_AI_MODEL, Settings
 from agent_product.schemas.chat import TokenUsage
 from agent_product.services.agent_profiles import (
     AgentProfile,
@@ -40,7 +42,20 @@ def _deepseek_model_name(model_name: str) -> str | None:
 
 
 def _select_model(settings: Settings) -> tuple[Any, bool]:
-    """Select DeepSeek's Anthropic-compatible API when server search is available."""
+    """Select the API needed by the configured model and its tools."""
+    if settings.ai_model == DEFAULT_AI_MODEL:
+        model_name = settings.ai_model.partition(":")[2]
+        api_key = (
+            settings.openai_api_key.get_secret_value().strip()
+            if settings.openai_api_key is not None
+            else ""
+        )
+        if not api_key:
+            # Defer credential validation so health checks and settings still work.
+            return f"openai-responses:{model_name}", False
+        provider = OpenAIProvider(api_key=api_key, base_url="https://api.openai.com/v1")
+        return OpenAIResponsesModel(model_name, provider=provider), False
+
     deepseek_model = _deepseek_model_name(settings.ai_model)
     if not settings.web_search_enabled or deepseek_model is None:
         return settings.ai_model, False

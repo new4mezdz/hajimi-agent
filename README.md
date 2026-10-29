@@ -39,7 +39,13 @@ python -m pip install -e ".[dev]"
 Copy-Item .env.example .env
 ```
 
-在 `.env` 中填写所选模型供应商的 API Key，然后启动：
+默认使用 OpenAI 开发者平台的 `gpt-6.1-sol`，通过 Responses API 调用模型和工具。
+在 [OpenAI 开发者平台](https://platform.openai.com/api-keys) 创建自己的 API Key，
+填入本机 `.env` 的 `OPENAI_API_KEY`，并保持 `AI_MODEL=openai:gpt-6.1-sol`。
+密钥只在本地填写，不要提交到 Git。模型和工具支持见
+[官方模型说明](https://developers.openai.com/api/docs/models/gpt-6.1-sol)。
+如果已有桌面或浏览器保存的配置，它会优先于 `.env`；请在设置中选择 OpenAI 和该模型。
+然后启动：
 
 ```powershell
 uvicorn agent_product.main:app --reload

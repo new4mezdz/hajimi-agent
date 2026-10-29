@@ -37,7 +37,7 @@ def test_lists_the_active_model_when_its_provider_is_configured(tmp_path: Path) 
 
 
 def test_hides_models_without_a_configured_provider_key(tmp_path: Path) -> None:
-    with _model_client(tmp_path, ai_model="openai:gpt-4.1-mini") as client:
+    with _model_client(tmp_path, ai_model="openai:gpt-4.1-mini", openai_api_key=None) as client:
         response = client.get("/v1/models")
 
     assert response.status_code == 200

@@ -1,5 +1,7 @@
+import json
 from pathlib import Path
 
+import httpx
 import pytest
 from pydantic import SecretStr
 from pydantic_ai import (
@@ -12,9 +14,10 @@ from pydantic_ai import (
 from pydantic_ai.messages import ToolReturnPart
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.models.openai import OpenAIResponsesModel
 from pydantic_ai.models.test import TestModel
 
-from agent_product.core.config import Settings
+from agent_product.core.config import DEFAULT_AI_MODEL, Settings
 from agent_product.services.agent import (
     AgentDependencies,
     _requires_web_search,
@@ -22,6 +25,79 @@ from agent_product.services.agent import (
     build_agent,
 )
 from agent_product.services.workspace import WorkspaceRegistry
+
+
+def test_default_openai_model_defers_missing_credentials(monkeypatch) -> None:
+    monkeypatch.delenv("AI_MODEL", raising=False)
+    settings = Settings(_env_file=None, openai_api_key=None)
+
+    selected_model, web_search_active = _select_model(settings)
+
+    assert settings.ai_model == "openai:gpt-6.1-sol"
+    assert selected_model == "openai-responses:gpt-6.1-sol"
+    assert web_search_active is False
+
+
+@pytest.mark.asyncio
+async def test_sol_uses_platform_key_and_responses_for_tool_round_trip(monkeypatch) -> None:
+    requests: list[dict] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://api.openai.com/v1/responses"
+        assert request.headers["authorization"] == "Bearer test-platform-key"
+        body = json.loads(request.content)
+        requests.append(body)
+        assert body["model"] == "gpt-6.1-sol"
+        assert any(tool.get("name") == "calculator" for tool in body["tools"])
+        if len(requests) == 1:
+            output = [{
+                "id": "fc_calculator",
+                "type": "function_call",
+                "call_id": "call_calculator",
+                "name": "calculator",
+                "arguments": '{"expression":"2+2"}',
+                "status": "completed",
+            }]
+        else:
+            tool_result = next(
+                item for item in body["input"] if item.get("type") == "function_call_output"
+            )
+            assert tool_result["call_id"] == "call_calculator"
+            assert json.loads(tool_result["output"])["result"] == 4
+            output = [{
+                "id": "msg_result",
+                "type": "message",
+                "role": "assistant",
+                "status": "completed",
+                "content": [{"type": "output_text", "text": "4", "annotations": []}],
+            }]
+        return httpx.Response(200, json={
+            "id": f"resp_{len(requests)}",
+            "object": "response",
+            "created_at": 1,
+            "model": "gpt-6.1-sol",
+            "status": "completed",
+            "output": output,
+            "usage": {"input_tokens": 20, "output_tokens": 4, "total_tokens": 24},
+        })
+
+    monkeypatch.setenv("OPENAI_API_KEY", "unused-environment-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://unused.example/v1")
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http_client:
+        monkeypatch.setattr(
+            "pydantic_ai.providers.openai.create_async_http_client", lambda: http_client
+        )
+        agent = build_agent(Settings(
+            _env_file=None,
+            ai_model=DEFAULT_AI_MODEL,
+            openai_api_key=SecretStr("test-platform-key"),
+        ))
+
+        result = await agent.run("Calculate 2+2")
+
+    assert isinstance(agent.model, OpenAIResponsesModel)
+    assert result.output == "4"
+    assert len(requests) == 2
 
 
 def test_deepseek_v4_uses_anthropic_model_for_native_search() -> None:
