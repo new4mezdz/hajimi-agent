@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 from pydantic import SecretStr
 from pydantic_ai import (
@@ -16,6 +16,7 @@ from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.openai import OpenAIResponsesModel
 from pydantic_ai.models.test import TestModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from agent_product.core.config import DEFAULT_AI_MODEL, Settings
 from agent_product.services.agent import (
@@ -42,7 +43,7 @@ def test_default_openai_model_defers_missing_credentials(monkeypatch) -> None:
 async def test_sol_uses_platform_key_and_responses_for_tool_round_trip(monkeypatch) -> None:
     requests: list[dict] = []
 
-    def respond(request: httpx.Request) -> httpx.Response:
+    def respond(request: httpx2.Request) -> httpx2.Response:
         assert str(request.url) == "https://api.openai.com/v1/responses"
         assert request.headers["authorization"] == "Bearer test-platform-key"
         body = json.loads(request.content)
@@ -71,7 +72,7 @@ async def test_sol_uses_platform_key_and_responses_for_tool_round_trip(monkeypat
                 "status": "completed",
                 "content": [{"type": "output_text", "text": "4", "annotations": []}],
             }]
-        return httpx.Response(200, json={
+        return httpx2.Response(200, json={
             "id": f"resp_{len(requests)}",
             "object": "response",
             "created_at": 1,
@@ -83,9 +84,10 @@ async def test_sol_uses_platform_key_and_responses_for_tool_round_trip(monkeypat
 
     monkeypatch.setenv("OPENAI_API_KEY", "unused-environment-key")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://unused.example/v1")
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http_client:
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(respond)) as http_client:
         monkeypatch.setattr(
-            "pydantic_ai.providers.openai.create_async_http_client", lambda: http_client
+            "agent_product.services.agent.OpenAIProvider",
+            lambda **kwargs: OpenAIProvider(**kwargs, http_client=http_client),
         )
         agent = build_agent(Settings(
             _env_file=None,

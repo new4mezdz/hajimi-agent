@@ -60,6 +60,15 @@
   离线复核本轮和旧基线分数均不变；最终测试 495 通过、3 跳过。
   见 [最终全量与发布报告](../evals/support/reports/full-2026-10-29-v3.md)。
   提交推送使用 `support-eval-v3` 分支，不直接更新 main。
+- 合并前复核：上面的测试和真模型运行都在 pydantic-ai 2.13.0 上完成。本机 2.62.0 上原有
+  5 个测试失败，原因是测试依赖旧版写法：新版用 `ToolReturnPart(outcome="retried")` 取代了
+  已弃用的 `RetryPromptPart`，也去掉了测试 mock 的内部函数。现在改为按 `outcome` 识别重试，
+  并通过 `OpenAIProvider(http_client=...)` 注入假客户端。评测轨迹的 `tool_error_count`
+  原先漏算参数校验失败，也已修正。依赖下限提到 `pydantic-ai-slim>=2.62`，
+  根目录 `constraints.txt` 锁定全部精确版本。在锁定版本上重新跑真模型前，先按第 3 节
+  跑 5 题小样本并报告用量。6 份全量和重判报告改存为 `.json.gz`，22MB 降到不足 2MB，
+  解压后逐字节一致；从压缩文件离线重判，仍得到 85/90 和 70/90。
+  全量测试除第 12 节第 7 条的已知偶发用例外全部通过（496 通过、3 跳过）。
 - 等用户决定：换货要不要加时间限制，见第 11 节。
 
 ## 3. 约束（必须遵守）
@@ -183,7 +192,8 @@ while isinstance(result.output, DeferredToolRequests):
 - 评测里的知识索引用 `memory` 后端，不要碰 `data/knowledge-index.db`。还要确认知识库是否需要先建索引。
 - 现有业务测试在审批后续跑时传了一句 `"Continue"`。本次已在实际安装的
   pydantic-ai 2.13.0 上通过假模型和真模型确认：给出 `deferred_tool_results` 后，
-  可以不传 `user_prompt` 直接续跑。评测不添加额外用户消息。
+  可以不传 `user_prompt` 直接续跑。评测不添加额外用户消息。仓库现已锁定 2.62.0，
+  版本差异见第 2 节最后的复核记录。
 - 拒绝审批，就是在 `approvals` 里给 `False`。
 - token 用量从 `result.usage` 取（参考 `services/agent.py::run_agent`）。它只算这一次 `run`，多轮对话和审批续跑要累加。
 - `.env` 由 `main.py` 里的 `load_dotenv()` 加载。独立的命令行脚本如果不导入 `main`，要自己调用 `load_dotenv()`，否则模型供应商读不到 Key。

@@ -35,9 +35,12 @@ Next.js、React 与 Vercel AI SDK。
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev]" -c constraints.txt
 Copy-Item .env.example .env
 ```
+
+`constraints.txt` 锁定了经过全量测试验证的依赖精确版本，安装时请带上它，
+避免不同时间安装到的 pydantic-ai 等依赖版本不一致。
 
 默认使用 OpenAI 开发者平台的 `gpt-6.1-sol`，通过 Responses API 调用模型和工具。
 在 [OpenAI 开发者平台](https://platform.openai.com/api-keys) 创建自己的 API Key，

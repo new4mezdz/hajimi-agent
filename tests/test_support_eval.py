@@ -300,6 +300,29 @@ async def test_shipping_uses_backend_display_and_independent_golden_expectation(
 
 
 @pytest.mark.asyncio
+async def test_rejected_tool_arguments_count_as_tool_errors() -> None:
+    def invalid_status_model(messages, info):
+        del info
+        returns = [p for m in messages for p in m.parts if isinstance(p, ToolReturnPart)]
+        if not returns:
+            part = ToolCallPart(
+                "find_my_orders", {"status_hint": "未送达"}, tool_call_id="invalid-status"
+            )
+        else:
+            assert returns[-1].outcome == "retried"
+            part = TextPart("暂时无法查询订单状态，请稍后再试。")
+        return ModelResponse(parts=[part])
+
+    result = await run_support_eval_task(
+        task_number(1),
+        eval_settings(),
+        model=FunctionModel(invalid_status_model),
+    )
+    assert result["error"] is None
+    assert result["tool_error_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_duplicate_scenario_requires_an_initial_successful_submission() -> None:
     result = await run_support_eval_task(task_number(24), eval_settings(), model=refund_model())
     assert result["passed"], result["failures"]

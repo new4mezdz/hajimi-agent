@@ -18,7 +18,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 from pydantic_ai import DeferredToolRequests, DeferredToolResults, capture_run_messages
-from pydantic_ai.messages import RetryPromptPart, ToolCallPart, ToolReturnPart
+from pydantic_ai.messages import ERROR_OUTCOMES, ToolCallPart, ToolReturnPart
 from pydantic_ai.usage import RunUsage, UsageLimits
 
 from agent_product.core.config import Settings
@@ -111,13 +111,14 @@ def _record_messages(
                     "args": arguments,
                     "call_id": part.tool_call_id,
                 }
-            elif isinstance(part, (ToolReturnPart, RetryPromptPart)):
+            elif isinstance(part, ToolReturnPart):
                 event = {
                     "kind": "return",
                     "tool": part.tool_name,
                     "content": part.content,
                     "call_id": part.tool_call_id,
-                    "is_error": isinstance(part, RetryPromptPart)
+                    # Rejected arguments come back as outcome="retried", not as an error dict.
+                    "is_error": part.outcome in ERROR_OUTCOMES
                     or (isinstance(part.content, dict) and "error" in part.content),
                 }
             else:

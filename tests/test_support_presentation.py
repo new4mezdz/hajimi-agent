@@ -12,7 +12,7 @@ from pydantic_ai import (
     TextPart,
     ToolCallPart,
 )
-from pydantic_ai.messages import RetryPromptPart, ToolReturnPart
+from pydantic_ai.messages import ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -195,7 +195,7 @@ async def test_invalid_enum_arguments_are_rejected_before_service_execution(
             part
             for message in messages
             for part in message.parts
-            if isinstance(part, RetryPromptPart)
+            if isinstance(part, ToolReturnPart) and part.outcome == "retried"
         )
         if retries:
             return ModelResponse(parts=[TextPart("参数无效，停止操作。")])
