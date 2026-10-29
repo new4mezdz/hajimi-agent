@@ -140,10 +140,11 @@ class GitService:
 
     def _environment(self) -> dict[str, str]:
         environment = os.environ.copy()
+        # Do not skip the system config: Git for Windows keeps core.autocrlf and
+        # credential.helper there, so review, commit and push must see it.
         environment.update(
             {
                 "GIT_TERMINAL_PROMPT": "0",
-                "GIT_CONFIG_NOSYSTEM": "1",
                 "LC_ALL": "C",
             }
         )
