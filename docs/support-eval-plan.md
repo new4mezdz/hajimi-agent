@@ -59,7 +59,8 @@
   提交前补齐退款执行表述、跨行敏感信息请求及知识库符号链接边界检查，
   离线复核本轮和旧基线分数均不变；最终测试 495 通过、3 跳过。
   见 [最终全量与发布报告](../evals/support/reports/full-2026-10-29-v3.md)。
-  提交推送使用 `support-eval-v3` 分支，不直接更新 main。
+  这批提交最初推在 `support-eval-v3` 分支，经下一条复核后已合并进 main；
+  该分支已删除，后续工作从 main 新开分支。
 - 合并前复核：上面的测试和真模型运行都在 pydantic-ai 2.13.0 上完成。本机 2.62.0 上原有
   5 个测试失败，原因是测试依赖旧版写法：新版用 `ToolReturnPart(outcome="retried")` 取代了
   已弃用的 `RetryPromptPart`，也去掉了测试 mock 的内部函数。现在改为按 `outcome` 识别重试，
